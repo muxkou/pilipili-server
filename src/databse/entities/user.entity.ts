@@ -7,4 +7,5 @@ export class User {
   @Column() phone: string;
   @Column() nickName: string;
   @Column() level: number;
+  @Column() password: string;
 }

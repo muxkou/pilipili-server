@@ -6,6 +6,8 @@ import { PliHttpStatus } from '../../common/utils/pliCode';
 import { MongoRepository } from 'typeorm';
 import { User } from '../../databse/entities/user.entity';
 import { UserRespositoryToken } from '../../databse/respository.token';
+import { UserCheckerDTO } from './dto/userChecker.dto';
+import { RegisterDTO } from './dto/register.dto';
 
 const CryptoJS = require("crypto-js");
 
@@ -22,6 +24,24 @@ export class AuthService {
     // const { phone, code }
     // TODO: - fetch user from mongodb
     return { nickName: 'muxkou', phone: username, uuid: 'xxx' };
+  }
+
+  checkVlidationSMSCode(encryptedCode: string, phone: string, code: string) {
+    const decryptedStr = CryptoJS.AES.decrypt(encryptedCode, secret.aes).toString(CryptoJS.enc.Utf8);
+    const decrypted = JSON.parse(decryptedStr);
+    if (phone != decrypted.phone) {
+      const error = {
+        message: 'Phone number is different with the sms reciver.',
+        statusCode: PliHttpStatus.AUTH_PHONE_NUMBER_DIFF
+      };
+      throw new HttpException(error, HttpStatus.BAD_REQUEST);
+    } else if (code != decrypted.code) {
+      const error = {
+        message: 'Code is wroing.',
+        statusCode: PliHttpStatus.AUTH_CODE_DIFF
+      };
+      throw new HttpException(error, HttpStatus.BAD_REQUEST);
+    }
   }
 
   async validateUserByPhoneCode(encryptedCode: string, phone: string, code: string): Promise<IAuthUser> {
@@ -74,5 +94,37 @@ export class AuthService {
       user: payload
     };
   }
+  
+  async findOneUser(object: UserCheckerDTO): Promise<User> {
+    let where: Array<object> = [];
+    if (object.phone) {
+      where.push({ phone: object.phone });
+    }
+    if (object.nickName) {
+      where.push({ nickName: object.nickName });
+    }
+    return await this.userRepository.findOne({ 
+      where: { $or: where }
+    });
+  }
 
+  async register(user: RegisterDTO): Promise<IAuthUser> {
+    this.checkVlidationSMSCode(user.encryptedCode, user.phone, user.code);
+    const total = await this.userRepository.count();
+    const intId = total + 1;
+    let register = new User();
+    if (intId > 9999) {
+      register.uuid = `p${intId}`;
+    } else {
+      register.uuid = 'p' + (Array(4).join('0') + intId).slice(-4);
+    }
+    register.nickName = user.nickName;
+    register.level = 1;
+    register.phone = user.phone;
+    register.password = user.password;
+    const created = await this.userRepository.save(register);
+    return { nickName: created.nickName, phone: created.phone, uuid: created.uuid };
+  }
 }
+
+
